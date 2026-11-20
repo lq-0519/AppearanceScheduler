@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key>
+  <string>zh_CN</string>
+  <key>CFBundleDisplayName</key>
+  <string>外观定时器</string>
+  <key>CFBundleExecutable</key>
+  <string>AppearanceScheduler</string>
+  <key>CFBundleIdentifier</key>
+  <string>io.github.lq-0519.AppearanceScheduler</string>
+  <key>CFBundleInfoDictionaryVersion</key>
+  <string>6.0</string>
+  <key>CFBundleName</key>
+  <string>外观定时器</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>1.0.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>LSMinimumSystemVersion</key>
+  <string>13.0</string>
+  <!-- 菜单栏应用不占用程序坞位置，仍可打开设置窗口。 -->
+  <key>LSUIElement</key>
+  <true/>
+  <!-- 首次使用系统事件切换外观时，由 macOS 展示此说明。 -->
+  <key>NSAppleEventsUsageDescription</key>
+  <string>外观定时器需要控制“系统事件”，以便按你设定的时间或菜单操作切换 Mac 的浅色和深色外观。</string>
+</dict>
+</plist>
