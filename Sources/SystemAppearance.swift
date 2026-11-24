@@ -6,10 +6,28 @@ enum SystemAppearance {
     @MainActor
     static func apply(_ mode: AppearanceMode) throws {
         // 使用明确的目标值，重复执行同一模式不会把外观切换回去。
+        _ = try execute("set dark mode of appearance preferences to \(mode.isDark ? "true" : "false")")
+    }
+
+    /// 直接读取系统当前的深色状态，在同一次脚本执行中取反并返回实际设定的新模式。
+    @MainActor
+    static func toggle() throws -> AppearanceMode {
+        let result = try execute("""
+        set currentDarkMode to (get dark mode of appearance preferences)
+        set newDarkMode to not currentDarkMode
+        set dark mode of appearance preferences to newDarkMode
+        return newDarkMode
+        """)
+        return result.booleanValue ? .dark : .light
+    }
+
+    /// 在主线程执行系统事件命令，统一应用超时设置，并保留授权和执行错误的具体原因。
+    @MainActor
+    private static func execute(_ commands: String) throws -> NSAppleEventDescriptor {
         let source = """
         tell application id "com.apple.systemevents"
             with timeout of 10 seconds
-                set dark mode of appearance preferences to \(mode.isDark ? "true" : "false")
+                \(commands)
             end timeout
         end tell
         """
@@ -18,7 +36,7 @@ enum SystemAppearance {
         }
 
         var errorInfo: NSDictionary?
-        _ = script.executeAndReturnError(&errorInfo)
+        let result = script.executeAndReturnError(&errorInfo)
         if let errorInfo {
             let code = (errorInfo[NSAppleScript.errorNumber] as? NSNumber)?.intValue
             switch code {
@@ -33,6 +51,7 @@ enum SystemAppearance {
                 throw AppearanceError.executionFailed(message: message, code: code)
             }
         }
+        return result
     }
 }
 

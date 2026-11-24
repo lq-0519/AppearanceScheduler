@@ -46,6 +46,8 @@ private final class AppearanceController: NSObject, NSApplicationDelegate, NSMen
     private var timer: Timer?
     /// 保留系统状态项，保证菜单栏图标随应用进程存续。
     private var statusItem: NSStatusItem?
+    /// 菜单由左键动作弹出，保留在控制器中以便按钮也能独立接收右键事件。
+    private let statusMenu = NSMenu()
     /// 展示登录项实际状态并提供开关。
     private let loginItem = NSMenuItem(title: "登录时启动", action: #selector(toggleLoginItem), keyEquivalent: "")
     /// 在登录项需要系统批准时提供对应的设置入口。
@@ -90,13 +92,17 @@ private final class AppearanceController: NSObject, NSApplicationDelegate, NSMen
     /// 创建原生菜单栏图标与菜单，设置窗口仍在需要时才加载。
     private func installMenu() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "circle.lefthalf.filled", accessibilityDescription: "外观定时器")
-        item.button?.toolTip = "外观定时器"
+        if let button = item.button {
+            button.image = NSImage(systemSymbolName: "circle.lefthalf.filled", accessibilityDescription: "外观定时器")
+            button.toolTip = "外观定时器（右键切换外观）"
+            button.target = self
+            button.action = #selector(statusItemClicked(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        }
 
-        let menu = NSMenu()
+        let menu = statusMenu
         menu.delegate = self
-        menu.addItem(NSMenuItem(title: "切到浅色", action: #selector(switchToLight), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "切到深色", action: #selector(switchToDark), keyEquivalent: ""))
+        menu.addItem(NSMenuItem(title: "切换外观", action: #selector(toggleAppearance), keyEquivalent: ""))
         menu.addItem(appearanceErrorItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "设置…", action: #selector(openSettings), keyEquivalent: ","))
@@ -108,8 +114,20 @@ private final class AppearanceController: NSObject, NSApplicationDelegate, NSMen
             menuItem.target = self
         }
 
-        item.menu = menu
         statusItem = item
+    }
+
+    /// 右键直接切换系统外观，左键和辅助功能触发则在图标下方打开原生菜单。
+    @objc private func statusItemClicked(_ button: NSStatusBarButton) {
+        if NSApp.currentEvent?.type == .rightMouseUp {
+            toggleAppearance()
+            return
+        }
+
+        let bottom = button.isFlipped ? button.bounds.maxY : button.bounds.minY
+        button.highlight(true)
+        defer { button.highlight(false) }
+        statusMenu.popUp(positioning: nil, at: NSPoint(x: button.bounds.minX, y: bottom), in: button)
     }
 
     /// 系统唤醒、时钟变化和时区变化后，从主线程重新应用当前时段并重安排定时。
@@ -164,24 +182,17 @@ private final class AppearanceController: NSObject, NSApplicationDelegate, NSMen
         reconcileAppearance()
     }
 
-    /// 由菜单立即切换到浅色。
-    @objc private func switchToLight() {
-        applyManualChoice(.light)
-    }
-
-    /// 由菜单立即切换到深色。
-    @objc private func switchToDark() {
-        applyManualChoice(.dark)
-    }
-
-    /// 切换成功后，把手动选择保存到下一个计划点。从未设定时间时只执行即时切换。
-    private func applyManualChoice(_ mode: AppearanceMode) {
-        guard apply(mode, interactive: true),
-              let occurrence = schedule?.occurrence(at: Date(), calendar: .autoupdatingCurrent) else {
-            return
+    /// 切换系统当前外观。已设置计划时，切换成功后保留新外观，直到下一个计划点。
+    @objc private func toggleAppearance() {
+        do {
+            let mode = try SystemAppearance.toggle()
+            appearanceError = nil
+            guard let occurrence = schedule?.occurrence(at: Date(), calendar: .autoupdatingCurrent) else { return }
+            saveManualOverride(ManualOverride(isDark: mode.isDark, expiresAt: occurrence.next))
+            armTimer(for: occurrence.next)
+        } catch {
+            recordAppearanceError(error, interactive: true)
         }
-        saveManualOverride(ManualOverride(isDark: mode.isDark, expiresAt: occurrence.next))
-        armTimer(for: occurrence.next)
     }
 
     /// 更新内存与本地偏好中的手动选择，清理已经到期或被新计划替换的选择。
@@ -194,19 +205,21 @@ private final class AppearanceController: NSObject, NSApplicationDelegate, NSMen
         }
     }
 
-    /// 调用系统外观接口。直接操作失败时立即提示，后台失败时保留给菜单查看。
-    @discardableResult
-    private func apply(_ mode: AppearanceMode, interactive: Bool) -> Bool {
+    /// 应用时间表指定的模式，成功后清除此前的切换错误。
+    private func apply(_ mode: AppearanceMode, interactive: Bool) {
         do {
             try SystemAppearance.apply(mode)
             appearanceError = nil
-            return true
         } catch {
-            appearanceError = error.localizedDescription
-            if interactive {
-                showAppearanceError()
-            }
-            return false
+            recordAppearanceError(error, interactive: interactive)
+        }
+    }
+
+    /// 保留最近一次切换错误供菜单查看，用户直接触发的切换失败时也立即弹出提示。
+    private func recordAppearanceError(_ error: Error, interactive: Bool) {
+        appearanceError = error.localizedDescription
+        if interactive {
+            showAppearanceError()
         }
     }
 
